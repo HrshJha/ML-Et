@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Voice Crop Predictor</title>
+</head>
+
+<body>
+
+    <h2>🎤 Speak Your Input</h2>
+
+    <button onclick="startRecording()">Start</button>
+    <button onclick="stopRecording()">Stop & Predict</button>
+
+    <p id="status"></p>
+    <pre id="result"></pre>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function startRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.start();
+            document.getElementById("status").innerText = "Recording...";
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+
+            mediaRecorder.onstop = async () => {
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+
+                const formData = new FormData();
+                formData.append("file", blob, "voice.wav");
+
+                document.getElementById("status").innerText = "Processing...";
+
+                const response = await fetch("http://localhost:8000/predict-audio", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                document.getElementById("status").innerText = "Done";
+                document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+            };
+        }
+    </script>
+
+</body>
+
+</html>
