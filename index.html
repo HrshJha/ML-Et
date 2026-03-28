@@ -7,7 +7,7 @@
 
 <body>
 
-    <h2>🎤 Speak Your Input</h2>
+    <h2>🎤 Speak Your Input (Max 4 sec)</h2>
 
     <button onclick="startRecording()">Start</button>
     <button onclick="stopRecording()">Stop & Predict</button>
@@ -21,26 +21,32 @@
 
         async function startRecording() {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
 
+            mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
 
-            mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
-            };
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
             mediaRecorder.start();
             document.getElementById("status").innerText = "Recording...";
+
+            // auto stop after 4 sec
+            setTimeout(() => {
+                if (mediaRecorder.state === "recording") {
+                    stopRecording();
+                }
+            }, 4000);
         }
 
         function stopRecording() {
             mediaRecorder.stop();
 
             mediaRecorder.onstop = async () => {
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+
+                const blob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
 
                 const formData = new FormData();
-                formData.append("file", blob, "voice.wav");
+                formData.append("file", blob, "voice.webm");
 
                 document.getElementById("status").innerText = "Processing...";
 
@@ -51,8 +57,10 @@
 
                 const data = await response.json();
 
-                document.getElementById("status").innerText = "Done";
-                document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+                document.getElementById("result").innerText =
+                    JSON.stringify(data, null, 2);
+
+                document.getElementById("status").innerText = "Done (Check speaker 🔊)";
             };
         }
     </script>
