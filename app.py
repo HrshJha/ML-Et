@@ -1,18 +1,19 @@
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import whisper
 import shutil
 import re
+import pyttsx3
 
 # =========================
-# INIT APP
+# INIT
 # =========================
 app = FastAPI()
 
-# ✅ CORS (IMPORTANT)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,29 +26,20 @@ app.add_middleware(
 # LOAD MODELS
 # =========================
 model = joblib.load("model.pkl")
-print("ML Model loaded")
-
-whisper_model = whisper.load_model("tiny")
-print("Whisper loaded")
+whisper_model = whisper.load_model("tiny.en")
 
 # =========================
-# CROP INFO
+# TEXT TO SPEECH
 # =========================
-crop_info = {
-    "rice": {"fertilizer": "Urea", "water": "High"},
-    "wheat": {"fertilizer": "NPK", "water": "Medium"},
-    "maize": {"fertilizer": "DAP", "water": "Medium"},
-    "jute": {"fertilizer": "Nitrogen-rich", "water": "High"},
-    "cotton": {"fertilizer": "Potash", "water": "Medium"},
-    "sugarcane": {"fertilizer": "NPK", "water": "High"},
-    "coffee": {"fertilizer": "NPK", "water": "Medium"},
-    "banana": {"fertilizer": "Potash", "water": "High"},
-    "watermelon": {"fertilizer": "DAP", "water": "Medium"},
-    "muskmelon": {"fertilizer": "DAP", "water": "Medium"},
-}
+engine = pyttsx3.init()
+engine.setProperty('rate', 170)
+
+def speak(text):
+    engine.say(text)
+    engine.runAndWait()
 
 # =========================
-# SMART PARSER
+# PARSER
 # =========================
 def extract_values(text):
     text = text.lower()
@@ -57,62 +49,17 @@ def extract_values(text):
         return float(match.group(1)) if match else 0
 
     return {
-        "N": find(r"(?:n|nitrogen)\s*(\d+)"),
-        "P": find(r"(?:p|phosphorus)\s*(\d+)"),
-        "K": find(r"(?:k|potassium)\s*(\d+)"),
-        "temperature": find(r"(?:temperature|temp)\s*(\d+)"),
-        "humidity": find(r"(?:humidity)\s*(\d+)"),
-        "ph": find(r"(?:ph)\s*(\d+\.?\d*)"),
-        "rainfall": find(r"(?:rain|rainfall)\s*(\d+)")
+        "N": find(r"(?:n|nitrogen)[^\d]*(\d+)"),
+        "P": find(r"(?:p|phosphorus)[^\d]*(\d+)"),
+        "K": find(r"(?:k|potassium)[^\d]*(\d+)"),
+        "temperature": find(r"(?:temperature|temp)[^\d]*(\d+)"),
+        "humidity": find(r"(?:humidity)[^\d]*(\d+)"),
+        "ph": find(r"(?:ph)[^\d]*(\d+\.?\d*)"),
+        "rainfall": find(r"(?:rainfall|rain)[^\d]*(\d+)")
     }
 
 # =========================
-# ROOT
-# =========================
-@app.get("/")
-def home():
-    return {"message": "API is running"}
-
-# =========================
-# TEXT PREDICT
-# =========================
-@app.post("/predict")
-def predict(data: dict):
-    try:
-        values = [[
-            float(data["N"]),
-            float(data["P"]),
-            float(data["K"]),
-            float(data["temperature"]),
-            float(data["humidity"]),
-            float(data["ph"]),
-            float(data["rainfall"])
-        ]]
-
-        probs = model.predict_proba(values)[0]
-        classes = model.classes_
-
-        top = probs.argsort()[::-1][:3]
-
-        result = []
-        for i in top:
-            crop = str(classes[i]).lower()
-            info = crop_info.get(crop, {"fertilizer": "General", "water": "Normal"})
-
-            result.append({
-                "crop": crop,
-                "confidence": round(float(probs[i]) * 100, 2),
-                "fertilizer": info["fertilizer"],
-                "water": info["water"]
-            })
-
-        return {"recommendations": result}
-
-    except Exception as e:
-        return {"error": str(e)}
-
-# =========================
-# AUDIO PREDICT
+# API
 # =========================
 @app.post("/predict-audio")
 def predict_audio(file: UploadFile = File(...)):
@@ -122,7 +69,8 @@ def predict_audio(file: UploadFile = File(...)):
         with open(path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        text = whisper_model.transcribe(path)["text"].lower()
+        result = whisper_model.transcribe(path, fp16=False)
+        text = result["text"]
 
         data = extract_values(text)
 
@@ -137,22 +85,26 @@ def predict_audio(file: UploadFile = File(...)):
 
         top = probs.argsort()[::-1][:3]
 
-        result = []
+        recommendations = []
+
         for i in top:
             crop = str(classes[i]).lower()
-            info = crop_info.get(crop, {"fertilizer": "General", "water": "Normal"})
-
-            result.append({
+            recommendations.append({
                 "crop": crop,
-                "confidence": round(float(probs[i]) * 100, 2),
-                "fertilizer": info["fertilizer"],
-                "water": info["water"]
+                "confidence": round(float(probs[i]) * 100, 2)
             })
+
+        # 🔊 BACKEND VOICE (FINAL FIX)
+        top_crop = recommendations[0]["crop"]
+        confidence = recommendations[0]["confidence"]
+
+        message = f"{top_crop} is best with {confidence} percent confidence"
+        speak(message)
 
         return {
             "text": text,
             "data": data,
-            "recommendations": result
+            "recommendations": recommendations
         }
 
     except Exception as e:
