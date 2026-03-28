@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 import joblib
 
-# =========================
-# INIT APP
-# =========================
 app = FastAPI()
 
 # =========================
