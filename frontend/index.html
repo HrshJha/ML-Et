@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AI Crop Recommendation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>🌾 AI Crop Recommendation</h1>
+        <p class="subtitle">Speak soil & weather data to get crop suggestions</p>
+
+        <div class="controls">
+            <button class="btn start" onclick="startRecording()">🎤 Start</button>
+            <button class="btn stop" onclick="stopRecording()">⏹ Stop</button>
+            <button class="btn speak" onclick="playVoice()">🔊 Speak Result</button>
+        </div>
+
+        <p id="status" class="status"></p>
+
+        <div class="card">
+            <h3>Result</h3>
+            <pre id="result"></pre>
+        </div>
+
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let lastMessage = "";
+
+        async function startRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+            mediaRecorder.start();
+            document.getElementById("status").innerText = "🎙 Recording...";
+
+            setTimeout(() => {
+                if (mediaRecorder.state === "recording") {
+                    stopRecording();
+                }
+            }, 4000);
+        }
+
+        function stopRecording() {
+            mediaRecorder.stop();
+
+            mediaRecorder.onstop = async () => {
+
+                const blob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+
+                const formData = new FormData();
+                formData.append("file", blob, "voice.webm");
+
+                document.getElementById("status").innerText = "⚙ Processing...";
+
+                const response = await fetch("http://localhost:8000/predict-audio", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                document.getElementById("result").innerText =
+                    JSON.stringify(data, null, 2);
+
+                const topCrop = data.recommendations[0].crop;
+                const confidence = data.recommendations[0].confidence;
+
+                lastMessage = `${topCrop} is the best crop with ${confidence} percent confidence`;
+
+                document.getElementById("status").innerText = "✅ Done";
+            };
+        }
+
+        function playVoice() {
+            if (!lastMessage) {
+                alert("No result yet");
+                return;
+            }
+
+            const speech = new SpeechSynthesisUtterance(lastMessage);
+            speech.rate = 1;
+
+            const voices = speechSynthesis.getVoices();
+            if (voices.length > 0) speech.voice = voices[0];
+
+            speechSynthesis.cancel();
+            speechSynthesis.speak(speech);
+        }
+
+        window.speechSynthesis.getVoices();
+    </script>
+
+</body>
+
+</html>
