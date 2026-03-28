@@ -1,23 +1,38 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>Voice Crop Predictor</title>
+    <meta charset="UTF-8">
+    <title>AI Crop Recommendation</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
-    <h2>🎤 Speak Your Input (Max 4 sec)</h2>
+    <div class="container">
 
-    <button onclick="startRecording()">Start</button>
-    <button onclick="stopRecording()">Stop & Predict</button>
+        <h1>🌾 AI Crop Recommendation</h1>
+        <p class="subtitle">Speak soil & weather data to get crop suggestions</p>
 
-    <p id="status"></p>
-    <pre id="result"></pre>
+        <div class="controls">
+            <button class="btn start" onclick="startRecording()">🎤 Start</button>
+            <button class="btn stop" onclick="stopRecording()">⏹ Stop</button>
+            <button class="btn speak" onclick="playVoice()">🔊 Speak Result</button>
+        </div>
+
+        <p id="status" class="status"></p>
+
+        <div class="card">
+            <h3>Result</h3>
+            <pre id="result"></pre>
+        </div>
+
+    </div>
 
     <script>
         let mediaRecorder;
         let audioChunks = [];
+        let lastMessage = "";
 
         async function startRecording() {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -28,9 +43,8 @@
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
             mediaRecorder.start();
-            document.getElementById("status").innerText = "Recording...";
+            document.getElementById("status").innerText = "🎙 Recording...";
 
-            // auto stop after 4 sec
             setTimeout(() => {
                 if (mediaRecorder.state === "recording") {
                     stopRecording();
@@ -48,7 +62,7 @@
                 const formData = new FormData();
                 formData.append("file", blob, "voice.webm");
 
-                document.getElementById("status").innerText = "Processing...";
+                document.getElementById("status").innerText = "⚙ Processing...";
 
                 const response = await fetch("http://localhost:8000/predict-audio", {
                     method: "POST",
@@ -60,9 +74,32 @@
                 document.getElementById("result").innerText =
                     JSON.stringify(data, null, 2);
 
-                document.getElementById("status").innerText = "Done (Check speaker 🔊)";
+                const topCrop = data.recommendations[0].crop;
+                const confidence = data.recommendations[0].confidence;
+
+                lastMessage = `${topCrop} is the best crop with ${confidence} percent confidence`;
+
+                document.getElementById("status").innerText = "✅ Done";
             };
         }
+
+        function playVoice() {
+            if (!lastMessage) {
+                alert("No result yet");
+                return;
+            }
+
+            const speech = new SpeechSynthesisUtterance(lastMessage);
+            speech.rate = 1;
+
+            const voices = speechSynthesis.getVoices();
+            if (voices.length > 0) speech.voice = voices[0];
+
+            speechSynthesis.cancel();
+            speechSynthesis.speak(speech);
+        }
+
+        window.speechSynthesis.getVoices();
     </script>
 
 </body>
